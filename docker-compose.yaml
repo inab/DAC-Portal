@@ -1,0 +1,102 @@
+version: '3'
+
+services:
+  dac-portal-frontend:
+    build:
+      context: ./DAC-Portal-frontend
+      dockerfile: Dockerfile
+    ports:
+      - 3080:3080
+    env_file:
+      - ./DAC-Portal-frontend/.env
+    volumes:
+      - ./DAC-Portal-frontend/src:/app/src
+    depends_on:
+      - mongo
+      - keycloak
+    networks:
+      dac-network:
+        ipv4_address: 172.21.0.14
+  dac-portal-backend:
+    build: 
+      context: ./DAC-Portal-backend
+      dockerfile: Dockerfile
+    ports:
+      - 9090:9090
+    env_file:
+      - ./DAC-Portal-backend/.env
+    volumes:
+      - ./DAC-Portal-backend/src:/usr/src/app/src
+    depends_on:
+      - mongo
+    networks:
+      dac-network:
+        ipv4_address: 172.21.0.23
+  permissions-api:
+    image: acavalls/ipc-permissions-api:latest
+    container_name: permissions-api-app
+    ports:
+      - 8081:8081
+    env_file:
+      - .env-permissions
+    depends_on:
+      - mongo
+    networks:
+      dac-network:
+        ipv4_address: 172.21.0.11
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      dac-network:
+        ipv4_address: 172.21.0.13
+  keycloak:
+    image: quay.io/keycloak/keycloak:15.0.2
+    environment:
+      DB_VENDOR: ${DB_VENDOR}
+      DB_ADDR: ${DB_ADDR}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USER: ${DB_USER}
+      DB_SCHEMA: ${DB_SCHEMA}
+      DB_PASSWORD: ${DB_PASSWORD}
+      KEYCLOAK_USER: ${KEYCLOAK_USER}
+      KEYCLOAK_PASSWORD: ${KEYCLOAK_PASSWORD}
+    volumes:
+      - "./ipc-test-data/keycloak/realms:/opt/jboss/keycloak/imports"
+      - "./ipc-plugins/keycloak:/opt/jboss/keycloak/standalone/deployments"
+    command:
+      - '-b 0.0.0.0 -Dkeycloak.profile.feature.upload_scripts=enabled -Dkeycloak.migration.action=import -Dkeycloak.migration.provider=singleFile -Dkeycloak.migration.file=/opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.migration.strategy=IGNORE_EXISTING'
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
+    networks:
+      dac-network:
+        ipv4_address: 172.21.0.12
+  mongo:
+    image: mongo:4.4
+    hostname: mongo
+    restart: always
+    volumes:
+      - "./ipc-test-data/mdbdata:/data/db"
+      - "./keyfile:/opt/keyfile/keyfile"
+    ports:
+      - 27017:27017
+    environment:
+      PUID: 1000
+      PGID: 1000
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_REPLICA_SET_NAME: rs0
+    command: "--bind_ip_all --keyFile /opt/keyfile/keyfile --replSet rs0"
+    networks:
+      dac-network:
+        ipv4_address: 172.21.0.10
+networks:
+  dac-network:
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
